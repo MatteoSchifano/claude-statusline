@@ -409,6 +409,30 @@ DIR_NAME="${CURRENT_DIR##*/}"
 DIR_NAME=$(printf '%s' "$DIR_NAME" | tr -d '\000-\037\177')
 TRANSCRIPT_PATH=$(echo "$input" | jq -r '.transcript_path // ""')
 
+# Extract model info for dynamic context limit and display name
+MODEL_ID=$(echo "$input" | jq -r '.model.id // ""')
+CONTEXT_WINDOW_SIZE=$(echo "$input" | jq -r '.context_window.context_window_size // 0')
+
+if [ "$CONTEXT_WINDOW_SIZE" -gt 0 ] 2>/dev/null; then
+    CONTEXT_LIMIT=$((CONTEXT_WINDOW_SIZE / 1000))
+fi
+
+# Build short model display name from model.id (e.g., "claude-opus-4-6[1m]" → "Opus 4.6")
+MODEL_DISPLAY=""
+if [ -n "$MODEL_ID" ]; then
+    MODEL_CLEAN=$(echo "$MODEL_ID" | sed 's/\[.*\]//')
+    MODEL_NAME=$(echo "$MODEL_CLEAN" | sed 's/^claude-//' | cut -d'-' -f1)
+    MODEL_NAME="$(echo "${MODEL_NAME:0:1}" | tr '[:lower:]' '[:upper:]')${MODEL_NAME:1}"
+    MODEL_VERSION=$(echo "$MODEL_CLEAN" | sed 's/^claude-//' | sed "s/^[a-z]*-//" | cut -d'-' -f1-2 | tr '-' '.')
+    MODEL_DISPLAY="${MODEL_NAME} ${MODEL_VERSION}"
+fi
+
+# Extract rate limits from Claude Code input
+RATE_LIMIT_5H_PCT=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // ""')
+RATE_LIMIT_5H_RESETS=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // ""')
+RATE_LIMIT_7D_PCT=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // ""')
+RATE_LIMIT_7D_RESETS=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // ""')
+
 # Get 5-hour window data from ccusage (needed by 5-HOUR WINDOW, TIMER, and/or TOKEN_RATE sections)
 # Only fetch if at least one of these sections is enabled
 if [ "$SHOW_FIVE_HOUR_WINDOW" = "true" ] || [ "$SHOW_TIMER" = "true" ] || [ "$SHOW_TOKEN_RATE" = "true" ]; then
@@ -984,6 +1008,49 @@ if [ "$SHOW_SESSIONS" = "true" ]; then
 fi
 
 # ====================================================================================
+# RATE LIMITS SECTIONS (uses Claude Code input, not ccusage)
+# ====================================================================================
+
+# Weekly rate limit bar (replaces 5-hour cost display)
+if [ "$SHOW_FIVE_HOUR_WINDOW" = "true" ] && [ -n "$RATE_LIMIT_7D_PCT" ] && [ "$RATE_LIMIT_7D_PCT" != "null" ]; then
+    RATE_LIMIT_7D_PCT=$(awk "BEGIN {printf \"%.0f\", $RATE_LIMIT_7D_PCT}")
+    RL7D_FILLED=$(awk "BEGIN {v = ($RATE_LIMIT_7D_PCT / 100) * $BAR_LENGTH; printf \"%.0f\", (v < 0 ? 0 : v)}")
+    [ "$RL7D_FILLED" -gt "$BAR_LENGTH" ] && RL7D_FILLED=$BAR_LENGTH
+
+    RL7D_BAR="["
+    for ((i=0; i<BAR_LENGTH; i++)); do
+        if [ $i -lt $RL7D_FILLED ]; then
+            RL7D_BAR="${RL7D_BAR}█"
+        else
+            RL7D_BAR="${RL7D_BAR}░"
+        fi
+    done
+    RL7D_BAR="${RL7D_BAR}]"
+
+    if (( $(awk "BEGIN {print ($RATE_LIMIT_7D_PCT < 50)}") )); then
+        RL7D_COLOR=$(get_color_code "green")
+    elif (( $(awk "BEGIN {print ($RATE_LIMIT_7D_PCT < 80)}") )); then
+        RL7D_COLOR=$(get_color_code "orange")
+    else
+        RL7D_COLOR=$(get_color_code "red")
+    fi
+
+    RL7D_RESET_FMT=""
+    if [ -n "$RATE_LIMIT_7D_RESETS" ] && [ "$RATE_LIMIT_7D_RESETS" != "null" ]; then
+        RL7D_RESET_FMT=$(date -r "$RATE_LIMIT_7D_RESETS" "+%a %H:%M" 2>/dev/null || echo "")
+    fi
+fi
+
+# 5-hour rate limit display (replaces timer)
+if [ "$SHOW_TIMER" = "true" ] && [ -n "$RATE_LIMIT_5H_PCT" ] && [ "$RATE_LIMIT_5H_PCT" != "null" ]; then
+    RATE_LIMIT_5H_PCT=$(awk "BEGIN {printf \"%.0f\", $RATE_LIMIT_5H_PCT}")
+    RL5H_RESET_FMT=""
+    if [ -n "$RATE_LIMIT_5H_RESETS" ] && [ "$RATE_LIMIT_5H_RESETS" != "null" ]; then
+        RL5H_RESET_FMT=$(date -r "$RATE_LIMIT_5H_RESETS" "+%-l:%M%p" 2>/dev/null | sed 's/AM/am/;s/PM/pm/' || echo "")
+    fi
+fi
+
+# ====================================================================================
 # STAGE 3: RENDERING - FINAL ASSEMBLY
 # ====================================================================================
 # Assemble all computed sections into the final statusline output.
@@ -998,8 +1065,15 @@ STATUSLINE_SECTIONS=()
 # Directory section
 [[ "$SHOW_DIRECTORY" == "true" ]] && STATUSLINE_SECTIONS+=("${ORANGE_CODE}${DIR_NAME}${RESET_CODE}")
 
-[[ "$SHOW_CONTEXT" == "true" ]] && [[ -n "${CTX_TOTAL:-}" ]] && STATUSLINE_SECTIONS+=("${CTX_COLOR}${CTX_TOTAL} ${CTX_PROGRESS_BAR}${RESET_CODE}")
-[[ "$SHOW_FIVE_HOUR_WINDOW" == "true" ]] && [[ -n "${COST_FMT:-}" ]] && STATUSLINE_SECTIONS+=("${PROGRESS_COLOR}${COST_FMT} ${PROGRESS_BAR} ${COST_PERCENTAGE}%${RESET_CODE}")
+[[ "$SHOW_CONTEXT" == "true" ]] && [[ -n "${CTX_TOTAL:-}" ]] && STATUSLINE_SECTIONS+=("${CTX_COLOR}${MODEL_DISPLAY:+${MODEL_DISPLAY} }${CTX_TOTAL} ${CTX_PROGRESS_BAR}${RESET_CODE}")
+if [[ "$SHOW_FIVE_HOUR_WINDOW" == "true" ]] && [[ -n "${RL7D_BAR:-}" ]]; then
+    DIM_CODE="\033[2m"
+    if [[ "$SHOW_LABELS" == "true" ]]; then
+        STATUSLINE_SECTIONS+=("${RL7D_COLOR}weekly ${RATE_LIMIT_7D_PCT}% ${RL7D_BAR}${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
+    else
+        STATUSLINE_SECTIONS+=("${RL7D_COLOR}${RATE_LIMIT_7D_PCT}% ${RL7D_BAR}${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
+    fi
+fi
 
 # Add daily/weekly combined or separate sections
 if [[ "$SHOW_DAILY" == "true" ]] && [[ "$SHOW_WEEKLY" == "true" ]] && [[ "$WEEKLY_DISPLAY_MODE" == "recommend" ]] && [[ -n "${DAILY_PROGRESS_BAR:-}" ]] && [[ -n "${WEEKLY_DISPLAY_VALUE:-}" ]]; then
@@ -1054,7 +1128,7 @@ if [[ "$SHOW_MONTHLY" == "true" ]] && [[ -n "${MONTHLY_COST_DISPLAY:-}" ]]; then
     fi
 fi
 
-[[ "$SHOW_TIMER" == "true" ]] && [[ -n "${RESET_INFO:-}" ]] && STATUSLINE_SECTIONS+=("${PURPLE_CODE}${RESET_INFO}${RESET_CODE}")
+[[ "$SHOW_TIMER" == "true" ]] && [[ -n "${RATE_LIMIT_5H_PCT:-}" ]] && [[ "$RATE_LIMIT_5H_PCT" != "null" ]] && STATUSLINE_SECTIONS+=("${PURPLE_CODE}${RL5H_RESET_FMT:+${RL5H_RESET_FMT} }${RATE_LIMIT_5H_PCT}%${RESET_CODE}")
 [[ "$SHOW_TOKEN_RATE" == "true" ]] && [[ -n "${TOKEN_RATE:-}" ]] && STATUSLINE_SECTIONS+=("${CYAN_CODE}${TOKEN_RATE}${RESET_CODE}")
 [[ "$SHOW_SESSIONS" == "true" ]] && [[ -n "${ACTIVE_SESSIONS:-}" ]] && STATUSLINE_SECTIONS+=("${CYAN_CODE}×${ACTIVE_SESSIONS}${RESET_CODE}")
 
