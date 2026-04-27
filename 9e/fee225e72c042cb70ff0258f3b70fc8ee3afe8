@@ -1,0 +1,24 @@
+src/statusline.sh
+  266a8284fa21b356 412-435,1010-1052,1068-1076,1131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9efee225e72c042cb70ff0258f3b70fc8ee3afe8",
+  "prompts": {
+    "266a8284fa21b356": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12f5d88e-4695-415c-833d-75ccb520b2de",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Matteo",
+      "messages": [],
+      "total_additions": 79,
+      "total_deletions": 5,
+      "accepted_lines": 77,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/15d95a949fa6273132c94617909cb903b0eadf76d8d73d892aa83479ff21405d"
+    }
+  }
+}
