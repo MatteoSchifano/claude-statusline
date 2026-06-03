@@ -6,6 +6,83 @@
 readonly WEEK_DURATION_SECONDS=604800  # 7 days
 readonly DAY_DURATION_SECONDS=86400    # 24 hours
 
+# ====================================================================================
+# CCUSAGE EXECUTION & CACHING
+# ====================================================================================
+# These helpers eliminate the two dominant latency costs of the statusline:
+#   1. `npx --yes ccusage@X` re-resolves the package on every invocation (~1.7s of
+#      pure overhead). We prefer a globally-installed `ccusage` binary when present.
+#   2. Several sections independently shell out to an *identical* `ccusage blocks
+#      --json` (~3.4s each). We cache the raw JSON to disk with a TTL so that, within
+#      a single render AND across renders inside the TTL window, each distinct ccusage
+#      command runs at most once.
+# Together these turn a multi-second, multi-call render into (at most) one ccusage
+# call per distinct command, served from cache the rest of the time.
+
+# Resolve the ccusage invocation. Prefers the global binary (no npx package
+# resolution); falls back to the version-pinned npx form when no global install
+# exists. Honors CCUSAGE_VERSION when set by the caller (defaults to 17.1.0).
+resolve_ccusage_cmd() {
+    if command -v ccusage >/dev/null 2>&1; then
+        echo "ccusage"
+    else
+        echo "npx --yes ccusage@${CCUSAGE_VERSION:-17.1.0}"
+    fi
+}
+
+# Directory for raw ccusage output caches (separate from the derived daily/weekly
+# caches managed by statusline-cache.sh).
+_ccusage_cache_dir() {
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    echo "$script_dir/../data"
+}
+
+# File mtime in epoch seconds, portable across macOS (BSD) and Linux (GNU) stat.
+_file_mtime() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+# Run a ccusage subcommand with TTL-based file caching of its raw JSON output.
+# Usage: ccusage_cached <cache_name> <ttl_seconds> <ccusage args...>
+# `--offline` is appended automatically. Returns cached JSON on a fresh hit;
+# otherwise runs ccusage, refreshes the cache atomically (tmp -> mv), and prints the
+# result. On ccusage failure it falls back to stale cache content (better stale than
+# blank). This is what makes repeated `blocks --json` calls collapse to one.
+ccusage_cached() {
+    local cache_name=$1; shift
+    local ttl=$1; shift
+    local cache_file
+    cache_file="$(_ccusage_cache_dir)/${cache_name}"
+    local now
+    now=$(date +%s)
+
+    # Fresh cache hit -> serve from disk, skip ccusage entirely.
+    if [ -s "$cache_file" ]; then
+        local age=$(( now - $(_file_mtime "$cache_file") ))
+        if [ "$age" -ge 0 ] && [ "$age" -lt "$ttl" ]; then
+            cat "$cache_file"
+            return 0
+        fi
+    fi
+
+    # Cache miss/stale -> run ccusage (same assignment-from-substitution pattern the
+    # rest of the script relies on, which is safe under `set -euo pipefail`).
+    local cmd
+    cmd=$(resolve_ccusage_cmd)
+    local output
+    output=$(cd ~ && $cmd "$@" --offline 2>/dev/null | awk '/^{/,0')
+
+    if [ -n "$output" ] && [ "$output" != "null" ]; then
+        printf '%s' "$output" > "${cache_file}.tmp" 2>/dev/null && \
+            mv "${cache_file}.tmp" "$cache_file" 2>/dev/null || true
+        printf '%s' "$output"
+    elif [ -s "$cache_file" ]; then
+        # ccusage unavailable/failed: degrade to stale data rather than nothing.
+        cat "$cache_file"
+    fi
+}
+
 # Convert Unix timestamp to ISO 8601 format
 # Usage: timestamp_to_iso <timestamp>
 # Returns: ISO 8601 string like "2025-10-01T15:00:00Z"
@@ -140,7 +217,7 @@ get_daily_cost() {
     local start_iso=$(timestamp_to_iso "$period_start")
 
     # Get all blocks from ccusage
-    local blocks_data=$(cd ~ && npx --yes ccusage blocks --json --offline 2>/dev/null | awk '/^{/,0')
+    local blocks_data=$(ccusage_cached ".blocks_cache" "${CACHE_DURATION:-300}" blocks --json)
 
     if [[ -z "$blocks_data" || "$blocks_data" == "null" ]]; then
         echo "0.00"
@@ -215,7 +292,7 @@ get_official_weekly_cost() {
     local start_iso=$(timestamp_to_iso "$period_start")
 
     # Get all blocks from ccusage
-    local blocks_data=$(cd ~ && npx --yes ccusage blocks --json --offline 2>/dev/null | awk '/^{/,0')
+    local blocks_data=$(ccusage_cached ".blocks_cache" "${CACHE_DURATION:-300}" blocks --json)
 
     if [[ -z "$blocks_data" || "$blocks_data" == "null" ]]; then
         echo "0.00"
@@ -280,7 +357,7 @@ get_weekly_recommend() {
     local period_start_iso=$(timestamp_to_iso "$period_start")
 
     # Get blocks and filter up to cycle start
-    local blocks_data=$(cd ~ && npx --yes ccusage blocks --json --offline 2>/dev/null | awk '/^{/,0')
+    local blocks_data=$(ccusage_cached ".blocks_cache" "${CACHE_DURATION:-300}" blocks --json)
 
     if [[ -z "$blocks_data" || "$blocks_data" == "null" ]]; then
         echo "0"
@@ -436,7 +513,7 @@ get_monthly_cost() {
     local end_iso=$(timestamp_to_iso "$period_end")
 
     # Get all blocks and filter by monthly period
-    local blocks_data=$(cd ~ && npx --yes "ccusage@17.1.0" blocks --json --offline 2>/dev/null | awk '/^{/,0')
+    local blocks_data=$(ccusage_cached ".blocks_cache" "${CACHE_DURATION:-300}" blocks --json)
 
     # Filter blocks within period and sum costs
     local monthly_cost=$(echo "$blocks_data" | jq -r --arg start "$start_iso" --arg end "$end_iso" '

@@ -436,9 +436,9 @@ RATE_LIMIT_7D_RESETS=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at /
 # Get 5-hour window data from ccusage (needed by 5-HOUR WINDOW, TIMER, and/or TOKEN_RATE sections)
 # Only fetch if at least one of these sections is enabled
 if [ "$SHOW_FIVE_HOUR_WINDOW" = "true" ] || [ "$SHOW_TIMER" = "true" ] || [ "$SHOW_TOKEN_RATE" = "true" ]; then
-    # Use --offline for faster execution with cached pricing
-    # Filter out npm warnings and capture only the JSON
-    WINDOW_DATA=$(cd ~ && npx --yes "ccusage@${CCUSAGE_VERSION}" blocks --active --json --token-limit $TOKEN_LIMIT --offline 2>/dev/null | awk '/^{/,0')
+    # Cached + global-binary-preferred ccusage call (see ccusage_cached in
+    # statusline-utils.sh). Refreshes at most once per CACHE_DURATION window.
+    WINDOW_DATA=$(ccusage_cached ".blocks_active_cache" "${CACHE_DURATION:-300}" blocks --active --json --token-limit "$TOKEN_LIMIT")
 
     if [ -n "$WINDOW_DATA" ] && [ "$WINDOW_DATA" != "null" ]; then
         # Parse window data
@@ -743,7 +743,7 @@ if [ "$SHOW_WEEKLY" = "true" ] || [ "$SHOW_DAILY" = "true" ]; then
         WEEK_COST_RAW=$(get_official_weekly_cost "$RESET_TIMESTAMP" "$CACHE_DURATION")
     else
         # Use ccusage with ISO weeks (default)
-        WEEKLY_DATA=$(cd ~ && npx --yes "ccusage@${CCUSAGE_VERSION}" weekly --json --offline 2>/dev/null | awk '/^{/,0')
+        WEEKLY_DATA=$(ccusage_cached ".weekly_raw_cache" "${CACHE_DURATION:-300}" weekly --json)
         WEEK_COST_RAW=$(echo "$WEEKLY_DATA" | jq -r '.weekly[-1].totalCost // 0')
     fi
 
@@ -919,7 +919,7 @@ if [ "$SHOW_WEEKLY" = "true" ] && [ -n "${WEEKLY_PCT:-}" ]; then
                 DAILY_CYCLE_START_ISO=$(timestamp_to_iso "$DAILY_CYCLE_START")
 
                 # Query ccusage blocks for costs between weekly start and daily cycle start
-                BLOCKS_DATA=$(cd ~ && npx --yes ccusage blocks --json --offline 2>/dev/null | awk '/^{/,0')
+                BLOCKS_DATA=$(ccusage_cached ".blocks_cache" "${CACHE_DURATION:-300}" blocks --json)
 
                 if [ -n "$BLOCKS_DATA" ] && [ "$BLOCKS_DATA" != "null" ]; then
                     COST_BEFORE_CYCLE=$(echo "$BLOCKS_DATA" | jq -r --arg start "$WEEKLY_START_ISO" --arg end "$DAILY_CYCLE_START_ISO" '
