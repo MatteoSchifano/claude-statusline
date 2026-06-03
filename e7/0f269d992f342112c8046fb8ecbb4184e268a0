@@ -1,0 +1,25 @@
+src/statusline-utils.sh
+  s_5edb236f0243ec::t_c9ebec798008f4 9-85
+  s_5edb236f0243ec::t_6105d70a96d421 220,295,360
+  s_5edb236f0243ec::t_7c51735cf1070d 516
+src/statusline.sh
+  s_5edb236f0243ec::t_c03c9370fd674a 922
+  s_5edb236f0243ec::t_b81b385db9d968 439-441
+  s_5edb236f0243ec::t_e887a0ef18ef1f 746
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e70f269d992f342112c8046fb8ecbb4184e268a0",
+  "prompts": {},
+  "sessions": {
+    "s_5edb236f0243ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f70c6695-f339-4750-b21c-ac4861981c62",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "MatteoSchifano <matvinsch@gmail.com>"
+    }
+  }
+}
