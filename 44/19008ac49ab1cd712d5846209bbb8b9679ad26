@@ -1,0 +1,24 @@
+CLAUDE.md
+  s_95ca368bd96242::t_d3020928461e8a 236-243
+  s_95ca368bd96242::t_a6540d0c0f0837 7,11
+install.sh
+  s_95ca368bd96242::t_da42f4713049f9 4,56,210-211,221,224-225,231,479
+README.md
+  s_95ca368bd96242::t_3b73dd50765a26 89,106-107,116,271,332,371,425,463
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "4419008ac49ab1cd712d5846209bbb8b9679ad26",
+  "prompts": {},
+  "sessions": {
+    "s_95ca368bd96242": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d50aa61-8f9b-4a7e-bc62-bb819cf3a63b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "MatteoSchifano <matvinsch@gmail.com>"
+    }
+  }
+}
