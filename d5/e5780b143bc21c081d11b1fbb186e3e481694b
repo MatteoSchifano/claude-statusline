@@ -1,0 +1,39 @@
+CLAUDE.md
+  s_95ca368bd96242::t_0729a03a2f47a0 56,58-62,70-71
+  s_95ca368bd96242::t_3f6cf8075bd0f9 83-87,91,94-95
+config/config.example.json
+  s_95ca368bd96242::t_48271dcd5898c5 104-107,109-118
+README.md
+  s_95ca368bd96242::t_388f2f192ad0f0 139
+  s_95ca368bd96242::t_2ef00549709ace 49-51,53-55,58,60-62,65-80
+  s_95ca368bd96242::t_24328408022358 13,15-22
+  s_95ca368bd96242::t_47d64f4a29290f 175-190
+  s_95ca368bd96242::t_02709b4c867149 226-249
+src/statusline.sh
+  s_95ca368bd96242::t_b477e8385525d5 487-525
+  s_95ca368bd96242::t_31c58efc322f7d 359-420
+  s_95ca368bd96242::t_c861c70837c74e 222
+  s_95ca368bd96242::t_247409b21c92da 288-293
+  s_95ca368bd96242::t_2cdbcd960f0f65 1224,1226
+  s_95ca368bd96242::t_95bdb46163e759 1287-1299,1301,1305-1307,1310
+  s_95ca368bd96242::t_ded2ff1d0887f6 214-215,218-221
+  s_95ca368bd96242::t_77d8373708c3af 1177-1197,1199-1218
+src/ccbranch.sh
+  s_95ca368bd96242::t_5d4a9e7c626ccb 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "d5e5780b143bc21c081d11b1fbb186e3e481694b",
+  "prompts": {},
+  "sessions": {
+    "s_95ca368bd96242": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d50aa61-8f9b-4a7e-bc62-bb819cf3a63b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "MatteoSchifano <matvinsch@gmail.com>"
+    }
+  }
+}
