@@ -508,8 +508,10 @@ if { [ "$SHOW_GIT" = "true" ] || [ "$SHOW_WORK_LINKS" = "true" ]; } && \
     fi
 
     if [ "$SHOW_WORK_LINKS" = "true" ]; then
-        # Linear issue id from branch (e.g. feature/YR-198_... → YR-198)
-        LINEAR_ID=$(printf '%s' "$GIT_BRANCH" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -n1 || true)
+        # Linear issue id from branch, case-insensitive then upper-cased so both
+        # the project convention (feature/YR-198_...) and Linear's own lowercase
+        # gitBranchName (feature/yr-264-...) resolve to "YR-198" / "YR-264".
+        LINEAR_ID=$(printf '%s' "$GIT_BRANCH" | grep -oiE '[A-Z][A-Z0-9]+-[0-9]+' | head -n1 | tr '[:lower:]' '[:upper:]' || true)
         if [ -n "$LINEAR_ID" ] && [ -n "$LINEAR_WORKSPACE" ]; then
             LINEAR_URL="https://linear.app/${LINEAR_WORKSPACE}/issue/${LINEAR_ID}"
         fi
