@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Claude Statusline - Installation Script (v2.1)
-# https://github.com/hell0github/claude-statusline
+# https://github.com/MatteoSchifano/claude-statusline
 
 set -e
 
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --plan PLAN              Set plan: pro, max5x, or max20x (default: max20x)"
-            echo "  --install-path PATH      Installation directory (default: ~/Projects/cc-statusline)"
+            echo "  --install-path PATH      Installation directory (default: ~/Documents/Projects/cc-statusline)"
             echo "  --auto-update-settings   Automatically update settings.json"
             echo "  --no-update-settings     Skip settings.json update"
             echo "  --non-interactive, -y    Run without prompts (uses defaults)"
@@ -207,8 +207,8 @@ if [ -f "$SCRIPT_DIR/src/statusline.sh" ] && [ -f "$SCRIPT_DIR/config/config.exa
             INSTALL_DIR="$SCRIPT_DIR"
             echo -e "${GREEN}✓ Using repository as installation directory${NC}"
         else
-            read -p "Enter installation path [$HOME/Projects/cc-statusline]: " custom_path
-            INSTALL_DIR="${custom_path:-$HOME/Projects/cc-statusline}"
+            read -p "Enter installation path [$HOME/Documents/Projects/cc-statusline]: " custom_path
+            INSTALL_DIR="${custom_path:-$HOME/Documents/Projects/cc-statusline}"
         fi
     fi
 else
@@ -218,17 +218,17 @@ else
     if [ -n "$INSTALL_PATH" ]; then
         INSTALL_DIR="$INSTALL_PATH"
     elif [ "$NON_INTERACTIVE" = true ]; then
-        INSTALL_DIR="$HOME/Projects/cc-statusline"
+        INSTALL_DIR="$HOME/Documents/Projects/cc-statusline"
         echo -e "${GREEN}✓ Using default path: $INSTALL_DIR${NC}"
     else
-        read -p "Enter installation path [$HOME/Projects/cc-statusline]: " custom_path
-        INSTALL_DIR="${custom_path:-$HOME/Projects/cc-statusline}"
+        read -p "Enter installation path [$HOME/Documents/Projects/cc-statusline]: " custom_path
+        INSTALL_DIR="${custom_path:-$HOME/Documents/Projects/cc-statusline}"
     fi
 
     # Clone repository if directory doesn't exist
     if [ ! -d "$INSTALL_DIR" ]; then
         echo "Cloning repository to $INSTALL_DIR..."
-        git clone https://github.com/hell0github/claude-statusline.git "$INSTALL_DIR"
+        git clone https://github.com/MatteoSchifano/claude-statusline.git "$INSTALL_DIR"
         echo -e "${GREEN}✓ Repository cloned${NC}"
     else
         echo -e "${YELLOW}⚠ Directory exists, using existing files${NC}"
@@ -476,5 +476,5 @@ echo "  - Check settings: cat ~/.claude/settings.json"
 echo "  - Test manually: echo '{}' | ~/.claude/statusline.sh"
 echo ""
 echo -e "${BLUE}Documentation: $INSTALL_DIR/README.md${NC}"
-echo -e "${BLUE}Repository: https://github.com/hell0github/claude-statusline${NC}"
+echo -e "${BLUE}Repository: https://github.com/MatteoSchifano/claude-statusline${NC}"
 echo ""

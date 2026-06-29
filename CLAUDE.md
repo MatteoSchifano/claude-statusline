@@ -4,11 +4,11 @@
 
 Real-time usage tracking statusline for Claude Code using shim architecture.
 
-**Repository**: `~/Projects/cc-statusline`
+**Repository**: `~/Documents/Projects/cc-statusline`
 **Active Branch**: `feature-daily-usage`
 **Remotes**:
 - Dev fork: `git@github.com:hell0github/claude-statusline-dev.git`
-- Production: `https://github.com/hell0github/claude-statusline.git`
+- Production: `https://github.com/MatteoSchifano/claude-statusline.git`
 
 ## Development Principles
 
@@ -232,6 +232,14 @@ tools/calibrate_weekly_usage.sh 15.0
 - `chore:` Maintenance
 
 ### Recent Updates
+
+**v2.4** (2026-06-29) - 3-Line Layout + Workflow Context
+- Restructured output into three lines: identity / work links / usage
+- Line 1: directory + git branch + worktree toggle (`[ ]`/`[X]`)
+- Line 2: Linear issue (id from branch) + open PR (`gh`, cached), OSC 8 links with text fallback, `＋ link Linear` CTA when no id
+- Removed the weekly rate-limit bar (kept `weekly N%`); token-rate and sessions off by default
+- New config: `sections.show_git`/`show_work_links` + `integrations` block (`linear.workspace`, `clickable_links`, `pr_cache_seconds`)
+- Added `src/ccbranch.sh` companion to rename the current branch (statusline is display-only)
 
 **v2.3** (2025-10-08) - Daily Recommendation Fix
 - Fixed recommend calculation to use correct cycle-aligned logic

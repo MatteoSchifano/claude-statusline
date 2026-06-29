@@ -86,7 +86,7 @@ Opus 4.8 45k [████████░░]  |  weekly 18%  |  42%
 One command to install everything:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/hell0github/claude-statusline/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/MatteoSchifano/claude-statusline/main/install.sh | bash
 ```
 
 The installer will:
@@ -103,8 +103,8 @@ The installer will:
 
 ```bash
 # Clone repository to Projects directory
-git clone https://github.com/hell0github/claude-statusline.git ~/Projects/cc-statusline
-cd ~/Projects/cc-statusline
+git clone https://github.com/MatteoSchifano/claude-statusline.git ~/Documents/Projects/cc-statusline
+cd ~/Documents/Projects/cc-statusline
 
 # Run installer (recommended)
 ./install.sh
@@ -113,7 +113,7 @@ cd ~/Projects/cc-statusline
 # 1. Create shim in ~/.claude/
 cat > ~/.claude/statusline.sh << 'EOF'
 #!/bin/bash
-exec "$HOME/Projects/cc-statusline/src/statusline.sh" "$@"
+exec "$HOME/Documents/Projects/cc-statusline/src/statusline.sh" "$@"
 EOF
 chmod +x ~/.claude/statusline.sh
 
@@ -268,7 +268,7 @@ Additionally, extended context usage (e.g., Sonnet 4 [1m]) may have pricing diff
 **Option 2: Direct Script**
 ```bash
 # From statusline project directory
-cd ~/Projects/cc-statusline
+cd ~/Documents/Projects/cc-statusline
 tools/calibrate_weekly_usage.sh 18.5
 ```
 
@@ -329,7 +329,7 @@ Setting the official reset date **enables two features**:
    - Go to Usage tab
    - Look for "Resets [date/time]" text (e.g., "Resets Oct 8, 3pm")
 
-2. **Update your config** (`~/Projects/cc-statusline/config/config.json`):
+2. **Update your config** (`~/Documents/Projects/cc-statusline/config/config.json`):
 ```json
 {
   "tracking": {
@@ -368,7 +368,7 @@ This plugin uses a **shim architecture** for clean separation and stability:
 ```
 Claude Code → ~/.claude/statusline.sh (2-line shim)
                       ↓
-              ~/Projects/cc-statusline/src/statusline.sh (implementation)
+              ~/Documents/Projects/cc-statusline/src/statusline.sh (implementation)
 ```
 
 **Benefits:**
@@ -422,7 +422,7 @@ All cache writes are atomic (tmp → mv) for crash safety.
 ## File Structure
 
 ```
-~/Projects/cc-statusline/          # Installation directory
+~/Documents/Projects/cc-statusline/          # Installation directory
 ├── src/                           # Source code
 │   ├── statusline.sh             # Main implementation (3-stage pipeline)
 │   ├── statusline-utils.sh       # Time tracking utilities (daily/weekly/monthly)
@@ -460,7 +460,7 @@ All cache writes are atomic (tmp → mv) for crash safety.
 - **statusline-layers.sh** - Reusable 2-layer and 3-layer metric calculations
 - **statusline-cache.sh** - Centralized cache validation with config dependency tracking
 - **Caches** - Atomic writes (tmp → mv), period-aware validation, dependency invalidation
-- **Shim** - Stable interface in ~/.claude/, implementation in ~/Projects/cc-statusline/
+- **Shim** - Stable interface in ~/.claude/, implementation in ~/Documents/Projects/cc-statusline/
 
 ## License
 
