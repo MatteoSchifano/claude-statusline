@@ -10,9 +10,16 @@ A custom statusline for [Claude Code 2.x](https://claude.com/claude-code) that p
 - **Weekly usage tracker** - Multiple display modes: usage %, available %, or recommended daily usage
 - **Monthly cost tracker** - Total spending from billing cycle start date (configurable)
 - **Context window tracker** - 3-layer visualization showing cached vs fresh tokens, supports extended context (>168k)
-- **Token burn rate** - Real-time tokens/min indicator based on billable tokens
+- **Token burn rate** - Real-time tokens/min indicator based on billable tokens (off by default)
 - **Session timer** - Countdown to next 5-hour window reset with current/reset time display
-- **Active sessions** - Concurrent Claude Code project counter
+- **Active sessions** - Concurrent Claude Code project counter (off by default)
+
+### Workflow Features (3-line layout)
+- **Git branch + worktree** - Line 1 shows the current branch with a `[ ]`/`[X]` toggle that flags whether you're in a linked git worktree
+- **Linear issue link** - Parses the Linear issue id from the branch name (e.g. `feature/YR-198_...` → `YR-198`) and renders a clickable link; shows a `＋ link Linear` CTA when the branch carries no id
+- **Open PR link** - Looks up the current branch's open PR via `gh` (cached on disk) and renders a clickable `PR #N`
+- **Clickable links** - OSC 8 terminal hyperlinks for Linear/PR (iTerm2, WezTerm, Kitty, VS Code), with graceful text fallback
+- **Branch rename helper** - Companion `ccbranch` command renames the current branch (the statusline is display-only and cannot)
 
 ### Advanced Features
 - **Intelligent weekly calibration** - Compensates for untracked costs (deleted transcripts, extended context)
@@ -39,28 +46,38 @@ A custom statusline for [Claude Code 2.x](https://claude.com/claude-code) that p
 
 ## Example Output
 
-### Full Display (all sections enabled)
+The statusline renders on **three lines**: identity, work links, then usage/budget.
+
+### Branch with a Linear id + open PR
 ```
-.claude | 45k/168k [████████░░] | $32/$140 [█████░░│░░] 23% | daily [██░│░░░░░░] 6/12% $21/$42 | total $324 | 5:45PM/10PM (3h 42m) | 928/min | ×2
+yourang  ⎇ feature/YR-198_custom-fields  [ ]
+LIN YR-198  |  PR #1391
+Opus 4.8 45k [████████░░]  |  weekly 18%  |  daily [██░│░░░░░░] 6/12%  |  3h 42m
 ```
 
-### Minimal Display (essential sections only)
+### Branch without a Linear id (CTA) inside a worktree
 ```
-.claude | $32/$140 [█████░░░░░] 23% | weekly 18% | 3h 42m
+yourang  ⎇ claude/shadcn-chat-refactor  [X]
+＋ link Linear  |  PR —
+Opus 4.8 45k [████████░░]  |  weekly 18%  |  42%
 ```
 
-**Section breakdown:**
-- `.claude` - Current project directory (bright orange)
-- `45k/168k [████████░░]` - Context: cached+fresh tokens with 3-layer progress bar
-- `$32/$140 [█████░░│░░] 23%` - 5-hour window: cost with projection separator (│) and percentage
-- `daily [██░│░░░░░░] 6/12% $21/$42` - Daily: actual/recommend % and cost (combined mode)
-- `total $324` - Monthly total cost from billing cycle start
-- `5:45PM/10PM (3h 42m)` - Current time / Reset time (countdown)
-- `928/min` - Token burn rate (billable tokens per minute)
-- `×2` - Active Claude Code sessions
+**Line breakdown:**
+- **Line 1 — identity**
+  - `yourang` - Current project directory (bright orange)
+  - `⎇ feature/YR-198_...` - Current git branch
+  - `[ ]` / `[X]` - Worktree toggle: `[X]` when inside a linked git worktree, `[ ]` in the main worktree
+- **Line 2 — work links**
+  - `LIN YR-198` - Linear issue parsed from the branch name (clickable link when `integrations.linear.workspace` is set)
+  - `＋ link Linear` - CTA shown instead when the branch carries no Linear id
+  - `PR #1391` - Open PR for the branch via `gh` (clickable); `PR —` when there is none
+- **Line 3 — usage / budget**
+  - `45k [████████░░]` - Context: cached+fresh tokens with 3-layer progress bar (prefixed by the model name)
+  - `weekly 18%` - Weekly rate-limit percentage (the `[█░░░]` bar was intentionally removed)
+  - `daily [██░│░░░░░░] 6/12%` - Daily: actual/recommend % (combined mode)
+  - `3h 42m` / `42%` - 5-hour window reset countdown / percentage
 
-![Statusline Screenshot](./example/statusline.png)
-*Screenshot showing the multi-layer color system in action*
+> Token burn rate (`/min`) and the active-sessions counter (`×N`) are disabled by default but can be re-enabled via `sections.show_token_rate` / `sections.show_sessions`.
 
 ## Installation
 
@@ -119,7 +136,7 @@ nano config/config.json
 
 ## Configuration
 
-Edit `~/Projects/cc-statusline/config/config.json` to customize your statusline:
+Edit `~/Documents/Projects/cc-statusline/config/config.json` to customize your statusline:
 
 ### Essential Settings
 - **`user.plan`** - Set to `"pro"`, `"max5x"`, or `"max20x"` (your subscription tier)
@@ -155,8 +172,22 @@ Edit `~/Projects/cc-statusline/config/config.json` to customize your statusline:
 - **`sections.show_weekly`** - Weekly usage display (default: true)
 - **`sections.show_monthly`** - Monthly total cost (default: false, requires `payment_cycle_start_date`)
 - **`sections.show_timer`** - Reset countdown (default: true)
-- **`sections.show_token_rate`** - Token burn rate (default: true)
-- **`sections.show_sessions`** - Active session counter (default: true)
+- **`sections.show_token_rate`** - Token burn rate / `/min` (default: false)
+- **`sections.show_sessions`** - Active session counter / `×N` (default: false)
+- **`sections.show_git`** - Line 1 git branch + worktree toggle (default: true)
+- **`sections.show_work_links`** - Line 2 Linear issue + open PR (default: true)
+
+### Integrations (Git / Linear / PR)
+- **`integrations.linear.workspace`** - Linear workspace slug used to build issue links.
+  Find it in any Linear URL: `https://linear.app/<workspace>/issue/...`. The issue id is parsed
+  from the branch name (e.g. `feature/YR-198_...` → `YR-198`). Leave empty to render the id/CTA
+  as plain, non-clickable text.
+- **`integrations.clickable_links`** - Emit OSC 8 terminal hyperlinks for the Linear issue and PR
+  (default: true). Clickable in iTerm2, WezTerm, Kitty, and the VS Code terminal; set to `false`
+  if your terminal renders raw escape codes.
+- **`integrations.pr_cache_seconds`** - How long the open-PR lookup (`gh pr view`) is cached on disk
+  (default: 90). Keeps the statusline fast by avoiding a network call on every render.
+  Requires the GitHub CLI (`gh`) to be installed and authenticated; degrades silently otherwise.
 
 ### Weekly Display Modes
 - **`sections.weekly_display_mode`** - How to display weekly section:
@@ -191,6 +222,30 @@ Edit `~/Projects/cc-statusline/config/config.json` to customize your statusline:
   - Lower values = more responsive but more API calls
 
 See `config/config.example.json` for all available options with detailed comments.
+
+## Branch Rename Helper (`ccbranch`)
+
+The statusline is **display-only** — it receives JSON on stdin and prints text, so it cannot
+accept keystrokes to edit the branch shown on line 1. Branch renaming lives in a tiny companion
+command instead:
+
+```bash
+ccbranch <new-name>     # rename the current branch (git branch -m)
+ccbranch --help         # usage
+```
+
+Add a shell alias so it's available everywhere:
+
+```bash
+# ~/.zshrc or ~/.bashrc
+alias ccbranch="$HOME/Documents/Projects/cc-statusline/src/ccbranch.sh"
+```
+
+`ccbranch` renames locally only. To update the remote afterwards:
+
+```bash
+git push origin -u <new-name>
+```
 
 ## Handling Untracked Costs (Deleted Transcripts)
 

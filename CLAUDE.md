@@ -53,10 +53,13 @@ Real-time usage tracking statusline for Claude Code using shim architecture.
 ## File Structure
 
 ```
-~/Projects/cc-statusline/
+~/Documents/Projects/cc-statusline/
 ├── src/
-│   ├── statusline.sh              # Main implementation
-│   └── statusline-utils.sh        # Daily/weekly tracking utilities
+│   ├── statusline.sh              # Main implementation (3-line render)
+│   ├── statusline-utils.sh        # Daily/weekly tracking utilities
+│   ├── statusline-cache.sh        # Cache dependency tracking
+│   ├── statusline-layers.sh       # Multi-layer metric calculations
+│   └── ccbranch.sh                # Companion: rename current branch
 ├── tools/
 │   └── calibrate_weekly_usage.sh  # Weekly usage calibration tool
 ├── config/
@@ -64,7 +67,8 @@ Real-time usage tracking statusline for Claude Code using shim architecture.
 │   └── config.example.json        # Template with defaults
 ├── data/                           # Runtime cache (gitignored)
 │   ├── .daily_cache
-│   └── .official_weekly_cache
+│   ├── .official_weekly_cache
+│   └── .pr_cache                  # Open-PR lookup cache (gh)
 ├── install.sh
 ├── README.md
 ├── CLAUDE.md
@@ -76,12 +80,19 @@ Real-time usage tracking statusline for Claude Code using shim architecture.
 
 ## Features
 
+### Layout (3 lines)
+- **Line 1 — identity**: directory + git branch + worktree toggle (`[ ]`/`[X]`)
+- **Line 2 — work links**: Linear issue (id parsed from branch) + open PR (`gh`, cached), with a `＋ link Linear` CTA when the branch has no id; OSC 8 hyperlinks via `osc8_link()`
+- **Line 3 — usage/budget**: context, weekly %, daily, timer
+
 ### Core Features
 - **5-hour window tracker** - Current session cost with projection
 - **Daily usage tracker** - 24-hour cycle aligned with weekly reset (2-layer: normal/exceeding)
-- **Weekly usage tracker** - Full week percentage
+- **Weekly usage tracker** - Full week percentage (rate-limit bar removed)
 - **Context window tracker** - Token usage monitoring
 - **Timer** - Countdown to next reset
+- **Git / Linear / PR** - Branch + worktree detection, Linear issue link, open-PR link (Stage 1 collects via `git -C`, `grep` on branch, `get_pr_for_branch()`)
+- **Branch rename** - `src/ccbranch.sh` companion command (statusline is display-only)
 
 ### Key Implementations
 - **Shim architecture** - Stable interface (`~/.claude/statusline.sh`) delegates to implementation

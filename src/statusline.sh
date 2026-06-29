@@ -211,7 +211,14 @@ if [ -f "$CONFIG_FILE" ]; then
     SHOW_TIMER=$(echo "$CONFIG" | jq -r 'if .sections.show_timer == null then "true" else .sections.show_timer | tostring end')
     SHOW_TOKEN_RATE=$(echo "$CONFIG" | jq -r 'if .sections.show_token_rate == null then "true" else .sections.show_token_rate | tostring end')
     SHOW_SESSIONS=$(echo "$CONFIG" | jq -r 'if .sections.show_sessions == null then "true" else .sections.show_sessions | tostring end')
+    SHOW_GIT=$(echo "$CONFIG" | jq -r 'if .sections.show_git == null then "true" else .sections.show_git | tostring end')
+    SHOW_WORK_LINKS=$(echo "$CONFIG" | jq -r 'if .sections.show_work_links == null then "true" else .sections.show_work_links | tostring end')
     WEEKLY_DISPLAY_MODE=$(echo "$CONFIG" | jq -r '.sections.weekly_display_mode')
+
+    # Integrations (git branch / Linear / PR)
+    LINEAR_WORKSPACE=$(echo "$CONFIG" | jq -r '.integrations.linear.workspace // ""')
+    CLICKABLE_LINKS=$(echo "$CONFIG" | jq -r 'if .integrations.clickable_links == null then "true" else .integrations.clickable_links | tostring end')
+    PR_CACHE_SECONDS=$(echo "$CONFIG" | jq -r '.integrations.pr_cache_seconds // 90')
 
     # Tracking settings
     WEEKLY_SCHEME=$(echo "$CONFIG" | jq -r '.tracking.weekly_scheme')
@@ -278,6 +285,12 @@ else
     SHOW_TIMER="true"
     SHOW_TOKEN_RATE="true"
     SHOW_SESSIONS="true"
+    SHOW_GIT="true"
+    SHOW_WORK_LINKS="true"
+    # Default integration settings
+    LINEAR_WORKSPACE=""
+    CLICKABLE_LINKS="true"
+    PR_CACHE_SECONDS=90
     # Default tracking settings
     WEEKLY_BASELINE_PCT=0
     CACHE_DURATION=300
@@ -341,6 +354,68 @@ get_color_code() {
         "cyan") echo "$CYAN_CODE" ;;
         *) echo "$GREEN_CODE" ;;
     esac
+}
+
+# Helper function: wrap text in an OSC 8 terminal hyperlink.
+# Clickable in supporting terminals (iTerm2, WezTerm, Kitty, VS Code); degrades
+# to plain text when CLICKABLE_LINKS=false or no URL is available.
+# Emits LITERAL escape tokens (\033 ...) so the final `printf '%b'` expands them
+# together with the surrounding color codes.
+# Usage: osc8_link <url> <text>
+osc8_link() {
+    local url="$1" text="$2"
+    if [ "${CLICKABLE_LINKS:-true}" = "true" ] && [ -n "$url" ]; then
+        printf '\\033]8;;%s\\033\\\\%s\\033]8;;\\033\\\\' "$url" "$text"
+    else
+        printf '%s' "$text"
+    fi
+}
+
+# Helper function: resolve the open PR for a branch, cached on disk.
+# Network call (`gh`) is throttled by PR_CACHE_SECONDS; "no PR" results are
+# cached too. Echoes "number|url|state" or nothing.
+# Runs inside a $() subshell, so `set +e` here is local and safe (tolerates the
+# expected non-zero exits from gh/read when there is no PR).
+# Usage: get_pr_for_branch <repo_dir> <branch>
+get_pr_for_branch() {
+    set +e
+    local dir="$1" branch="$2"
+    [ -z "$branch" ] && return 0
+    command -v gh >/dev/null 2>&1 || return 0
+
+    local data_dir cache_file now
+    data_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../data"
+    cache_file="$data_dir/.pr_cache"
+    now=$(date +%s)
+
+    # Fresh cache hit for this branch?
+    if [ -f "$cache_file" ]; then
+        local c_ts c_branch c_num c_url c_state
+        IFS='|' read -r c_ts c_branch c_num c_url c_state < "$cache_file"
+        if [ "$c_branch" = "$branch" ] && [ $((now - c_ts)) -lt "${PR_CACHE_SECONDS:-90}" ]; then
+            [ "$c_num" = "none" ] && return 0
+            printf '%s|%s|%s' "$c_num" "$c_url" "$c_state"
+            return 0
+        fi
+    fi
+
+    # Cache miss → query gh (bounded by `timeout` when available)
+    local timeout_cmd="" pr_json="" num="" url="" state=""
+    command -v timeout >/dev/null 2>&1 && timeout_cmd="timeout 3"
+    pr_json=$(cd "$dir" && $timeout_cmd gh pr view "$branch" --json number,url,state 2>/dev/null)
+    if [ -n "$pr_json" ]; then
+        num=$(printf '%s' "$pr_json" | jq -r '.number // empty')
+        url=$(printf '%s' "$pr_json" | jq -r '.url // empty')
+        state=$(printf '%s' "$pr_json" | jq -r '.state // empty')
+    fi
+
+    mkdir -p "$data_dir"
+    if [ -n "$num" ]; then
+        printf '%s|%s|%s|%s|%s' "$now" "$branch" "$num" "$url" "$state" > "$cache_file.tmp" && mv "$cache_file.tmp" "$cache_file"
+        printf '%s|%s|%s' "$num" "$url" "$state"
+    else
+        printf '%s|%s|none||' "$now" "$branch" > "$cache_file.tmp" && mv "$cache_file.tmp" "$cache_file"
+    fi
 }
 
 # Determine weekly limit based on plan
@@ -408,6 +483,45 @@ DIR_NAME="${CURRENT_DIR##*/}"
 # Sanitize DIR_NAME to prevent ANSI injection
 DIR_NAME=$(printf '%s' "$DIR_NAME" | tr -d '\000-\037\177')
 TRANSCRIPT_PATH=$(echo "$input" | jq -r '.transcript_path // ""')
+
+# --- Git / branch / worktree / Linear / PR ---
+GIT_BRANCH=""
+GIT_WORKTREE_MARK=""
+LINEAR_ID=""
+LINEAR_URL=""
+PR_NUMBER=""
+PR_URL=""
+if { [ "$SHOW_GIT" = "true" ] || [ "$SHOW_WORK_LINKS" = "true" ]; } && \
+   git -C "$CURRENT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    GIT_BRANCH=$(git -C "$CURRENT_DIR" branch --show-current 2>/dev/null)
+    [ -z "$GIT_BRANCH" ] && GIT_BRANCH=$(git -C "$CURRENT_DIR" rev-parse --short HEAD 2>/dev/null)
+    # Sanitize to prevent ANSI injection from a crafted branch name
+    GIT_BRANCH=$(printf '%s' "$GIT_BRANCH" | tr -d '\000-\037\177')
+
+    # Worktree toggle: a linked worktree has git-dir != git-common-dir → [X]
+    _git_dir=$(git -C "$CURRENT_DIR" rev-parse --git-dir 2>/dev/null)
+    _git_common=$(git -C "$CURRENT_DIR" rev-parse --git-common-dir 2>/dev/null)
+    if [ -n "$_git_dir" ] && [ "$_git_dir" != "$_git_common" ]; then
+        GIT_WORKTREE_MARK="[X]"
+    else
+        GIT_WORKTREE_MARK="[ ]"
+    fi
+
+    if [ "$SHOW_WORK_LINKS" = "true" ]; then
+        # Linear issue id from branch (e.g. feature/YR-198_... → YR-198)
+        LINEAR_ID=$(printf '%s' "$GIT_BRANCH" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -n1 || true)
+        if [ -n "$LINEAR_ID" ] && [ -n "$LINEAR_WORKSPACE" ]; then
+            LINEAR_URL="https://linear.app/${LINEAR_WORKSPACE}/issue/${LINEAR_ID}"
+        fi
+
+        # Open PR for this branch (cached; degrades silently without gh/auth)
+        _pr=$(get_pr_for_branch "$CURRENT_DIR" "$GIT_BRANCH" || true)
+        if [ -n "$_pr" ]; then
+            PR_NUMBER=$(printf '%s' "$_pr" | cut -d'|' -f1)
+            PR_URL=$(printf '%s' "$_pr" | cut -d'|' -f2)
+        fi
+    fi
+fi
 
 # Extract model info for dynamic context limit and display name
 MODEL_ID=$(echo "$input" | jq -r '.model.id // ""')
@@ -1060,18 +1174,56 @@ fi
 #   - Data availability (presence of computed values)
 # ====================================================================================
 
-STATUSLINE_SECTIONS=()
+# Dimmed separator shared by every line
+DIM_CODE="\033[2m"
+SEPARATOR=" ${DIM_CODE}|${RESET_CODE} "
 
-# Directory section
-[[ "$SHOW_DIRECTORY" == "true" ]] && STATUSLINE_SECTIONS+=("${ORANGE_CODE}${DIR_NAME}${RESET_CODE}")
+# Join array elements (passed as args) with SEPARATOR.
+# Caller MUST ensure the array is non-empty: under bash 3.2 + `set -u`,
+# expanding an empty array as "${arr[@]}" raises "unbound variable".
+join_sections() {
+    local out="" first=true s
+    for s in "$@"; do
+        if [[ "$first" == "true" ]]; then out="$s"; first=false; else out="$out$SEPARATOR$s"; fi
+    done
+    printf '%s' "$out"
+}
+
+# ---------- LINE 1: identity (directory + branch + worktree) ----------
+LINE1_SECTIONS=()
+[[ "$SHOW_DIRECTORY" == "true" ]] && LINE1_SECTIONS+=("${ORANGE_CODE}${DIR_NAME}${RESET_CODE}")
+if [[ "$SHOW_GIT" == "true" ]] && [[ -n "${GIT_BRANCH:-}" ]]; then
+    LINE1_SECTIONS+=("${PURPLE_CODE}⎇ ${GIT_BRANCH}${RESET_CODE}${GIT_WORKTREE_MARK:+ ${DIM_CODE}${GIT_WORKTREE_MARK}${RESET_CODE}}")
+fi
+
+# ---------- LINE 2: work links (Linear + PR, with CTA fallback) ----------
+LINE2_SECTIONS=()
+if [[ "$SHOW_WORK_LINKS" == "true" ]]; then
+    if [[ -n "${LINEAR_ID:-}" ]]; then
+        LINE2_SECTIONS+=("${CYAN_CODE}$(osc8_link "$LINEAR_URL" "LIN ${LINEAR_ID}")${RESET_CODE}")
+    else
+        # CTA when the branch carries no Linear id (links to the workspace if set)
+        _cta_url=""
+        [[ -n "${LINEAR_WORKSPACE:-}" ]] && _cta_url="https://linear.app/${LINEAR_WORKSPACE}"
+        LINE2_SECTIONS+=("${DIM_CODE}$(osc8_link "$_cta_url" "＋ link Linear")${RESET_CODE}")
+    fi
+    if [[ -n "${PR_NUMBER:-}" ]]; then
+        LINE2_SECTIONS+=("${DIM_GREEN_CODE}$(osc8_link "$PR_URL" "PR #${PR_NUMBER}")${RESET_CODE}")
+    else
+        LINE2_SECTIONS+=("${DIM_CODE}PR —${RESET_CODE}")
+    fi
+fi
+
+# ---------- LINE 3: usage / budget ----------
+STATUSLINE_SECTIONS=()
 
 [[ "$SHOW_CONTEXT" == "true" ]] && [[ -n "${CTX_TOTAL:-}" ]] && STATUSLINE_SECTIONS+=("${CTX_COLOR}${MODEL_DISPLAY:+${MODEL_DISPLAY} }${CTX_TOTAL} ${CTX_PROGRESS_BAR}${RESET_CODE}")
 if [[ "$SHOW_FIVE_HOUR_WINDOW" == "true" ]] && [[ -n "${RL7D_BAR:-}" ]]; then
     DIM_CODE="\033[2m"
     if [[ "$SHOW_LABELS" == "true" ]]; then
-        STATUSLINE_SECTIONS+=("${RL7D_COLOR}weekly ${RATE_LIMIT_7D_PCT}% ${RL7D_BAR}${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
+        STATUSLINE_SECTIONS+=("${RL7D_COLOR}weekly ${RATE_LIMIT_7D_PCT}%${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
     else
-        STATUSLINE_SECTIONS+=("${RL7D_COLOR}${RATE_LIMIT_7D_PCT}% ${RL7D_BAR}${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
+        STATUSLINE_SECTIONS+=("${RL7D_COLOR}${RATE_LIMIT_7D_PCT}%${RL7D_RESET_FMT:+ ${DIM_CODE}${RL7D_RESET_FMT}}${RESET_CODE}")
     fi
 fi
 
@@ -1132,26 +1284,28 @@ fi
 [[ "$SHOW_TOKEN_RATE" == "true" ]] && [[ -n "${TOKEN_RATE:-}" ]] && STATUSLINE_SECTIONS+=("${CYAN_CODE}${TOKEN_RATE}${RESET_CODE}")
 [[ "$SHOW_SESSIONS" == "true" ]] && [[ -n "${ACTIVE_SESSIONS:-}" ]] && STATUSLINE_SECTIONS+=("${CYAN_CODE}×${ACTIVE_SESSIONS}${RESET_CODE}")
 
-# Join sections with separator
-# Define dimmed separator
-DIM_CODE="\033[2m"
-SEPARATOR=" ${DIM_CODE}|${RESET_CODE} "
+# ---------- Assemble the three lines, skipping any that are empty ----------
+LINE1=""
+[ ${#LINE1_SECTIONS[@]} -gt 0 ] && LINE1=$(join_sections "${LINE1_SECTIONS[@]}")
+LINE2=""
+[ ${#LINE2_SECTIONS[@]} -gt 0 ] && LINE2=$(join_sections "${LINE2_SECTIONS[@]}")
+LINE3=""
+[ ${#STATUSLINE_SECTIONS[@]} -gt 0 ] && LINE3=$(join_sections "${STATUSLINE_SECTIONS[@]}")
 
-STATUSLINE=""
-FIRST=true
-for section in "${STATUSLINE_SECTIONS[@]}"; do
-    if [[ "$FIRST" == "true" ]]; then
-        STATUSLINE="$section"
-        FIRST=false
+OUTPUT=""
+for line in "$LINE1" "$LINE2" "$LINE3"; do
+    [ -z "$line" ] && continue
+    if [ -z "$OUTPUT" ]; then
+        OUTPUT="$line"
     else
-        STATUSLINE="$STATUSLINE$SEPARATOR$section"
+        OUTPUT="$OUTPUT"$'\n'"$line"
     fi
 done
 
-# Display statusline
-if [ -n "$STATUSLINE" ]; then
-    printf '%b\n' "$STATUSLINE"
+# Display statusline (multi-line)
+if [ -n "$OUTPUT" ]; then
+    printf '%b\n' "$OUTPUT"
 else
     # Fallback if no sections enabled
-    echo "$DIR_NAME | No active window"
+    printf '%b\n' "${ORANGE_CODE}${DIR_NAME}${RESET_CODE}"
 fi
